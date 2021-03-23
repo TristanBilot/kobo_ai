@@ -41,7 +41,7 @@ class Card:
         return isinstance(obj, Card) and self.format == obj.format
 
 class Game:
-    def __init__(self, nb_players, nb_cards=4):
+    def __init__(self, nb_players=2, nb_cards=4):
         self.nb_players = nb_players
         self.nb_cards = nb_cards
         self._init_game()
@@ -52,28 +52,20 @@ class Game:
         return self.deck.pop()
 
     def launch(self):
-        player = self.players[0]
-        should_pop = True
+        player, ai = self.players[0], self.players[1]
+        player_turn = bool(random.randint(0, 1))
+
         while True:
-            if should_pop:
-                deck_card = self.pop_card()
-                should_pop = False
-
-            
-            player.display_cards()
-            print('New card => {}'.format(deck_card.format))
-
-            answer = int(input('Your turn: ')) - 1
-            if not self._check_input(player, answer):
-                continue
-            should_pop = True
-
-            player.handle_input(answer, deck_card)
-
-    def _check_input(self, player, answer):
-        return answer < player.nb_card()
+            deck_card = self.pop_card()
+            if player_turn:
+                thrown_cards = player.play(deck_card)
+            else:
+                thrown_cards = ai.play(deck_card)
+            player_turn = not player_turn
+            self.thrown_deck += thrown_cards
 
     def _init_game(self):
+        self.thrown_deck = []
         deck = []
         for suit in Suit:
             for rank in Rank:
@@ -83,35 +75,59 @@ class Game:
         self.deck = deck
 
         players = []
-        for _ in range(self.nb_players):
+        for i in range(self.nb_players):
             cards = []
             for _ in range(self.nb_cards):
                 cards.append(self.pop_card())
-            players.append(Player(cards.copy()))
+            if i == 0:
+                players.append(Player(cards.copy()))
+            if i == 1:
+                players.append(AIPlayer(cards.copy(), self))
         self.players = players
 
-class Player:
+class PlayerI:
     def __init__(self, cards):
         self.cards = cards
 
-    def handle_input(self, answer, deck_card):
+    def play(self, deck_card):
+        pass
+
+    def substitute_card(self, answer, deck_card):
         selected = self.cards[answer]
+        thrown_cards = [card for card in self.cards if card == selected]
         self.cards.pop(answer)
         self.cards.insert(answer, deck_card)
 
         # remove all duplicates of the chosen card
         self.cards = [card for card in self.cards if card != selected]
+        return thrown_cards
 
     def display_cards(self):
         # print(' '.join(['*' for _ in range(len(self.cards))]))
         print(' '.join([c.format for c in self.cards]))
 
-    def has_this_card(self, answer):
-        card = self.cards[answer]
-        return card.format in list(map(lambda x: x.format(), self.cards))
+class Player(PlayerI):
+    def play(self, deck_card):
+        self.display_cards()
+        print('New card => {}'.format(deck_card.format))
 
-    def nb_card(self):
-        return len(self.cards)
+        answer = int(input('Your turn: '))
+        if answer > len(self.cards) or answer < 0:
+            print('Insert a number between {} and {}'.format(0, len(self.cards)))
+            self.play(deck_card)
+        answer -= 1
 
-g = Game(2)
+        return self.substitute_card(answer, deck_card)
+
+class AIPlayer(PlayerI):
+    def __init__(self, cards, game):
+        super().__init__(cards)
+        self.game = game
+
+    def play(self, deck_card):
+
+        return self.substitute_card(1, deck_card)
+
+
+g = Game()
 g.launch()
