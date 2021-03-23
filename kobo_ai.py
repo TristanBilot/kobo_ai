@@ -59,40 +59,28 @@ class Game:
                 deck_card = self.pop_card()
                 should_pop = False
 
-            print()
-            for c in player.cards:
-                print(c.format)
+            
+            player.display_cards()
             print('New card => {}'.format(deck_card.format))
 
-            answer = int(input('Your turn: '))
-            # if not self._check_input(player, answer):
-            #     continue
+            answer = int(input('Your turn: ')) - 1
+            if not self._check_input(player, answer):
+                continue
             should_pop = True
 
             player.handle_input(answer, deck_card)
 
-            
-    # def _check_input(self, player, answer):
-    #     if self.possible_inputs.get(answer) is None:
-    #         print('Invalid format, please try again.')
-    #         return False
-    #     if not player.has_this_card(answer):
-    #         print('You do not possess this card.')
-    #         return False
-    #     return True
-
+    def _check_input(self, player, answer):
+        return answer < player.nb_card()
 
     def _init_game(self):
         deck = []
-        possible_inputs = {}
         for suit in Suit:
             for rank in Rank:
                 card = Card(rank, suit)
                 deck.append(card)
-                possible_inputs[card.format] = True
         random.shuffle(deck)
         self.deck = deck
-        self.possible_inputs = possible_inputs
 
         players = []
         for _ in range(self.nb_players):
@@ -106,20 +94,24 @@ class Player:
     def __init__(self, cards):
         self.cards = cards
 
-    # def has_this_card(self, card_format):
-    #     for c in self.cards:
-    #         if c.format == card_format:
-    #             return True
-    #     return False
-
     def handle_input(self, answer, deck_card):
         selected = self.cards[answer]
         self.cards.pop(answer)
         self.cards.insert(answer, deck_card)
 
-        for i in range(len(self.cards)):
-            if self.cards[i] == selected:
-                 self.cards.pop(i)
+        # remove all duplicates of the chosen card
+        self.cards = [card for card in self.cards if card != selected]
+
+    def display_cards(self):
+        # print(' '.join(['*' for _ in range(len(self.cards))]))
+        print(' '.join([c.format for c in self.cards]))
+
+    def has_this_card(self, answer):
+        card = self.cards[answer]
+        return card.format in list(map(lambda x: x.format(), self.cards))
+
+    def nb_card(self):
+        return len(self.cards)
 
 g = Game(2)
 g.launch()
