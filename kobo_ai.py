@@ -47,9 +47,9 @@ class Card:
         return isinstance(obj, Card) and self.format == obj.format
 
 class Game:
-    def __init__(self, nb_players=2, nb_cards=4):
-        self.nb_players = nb_players
+    def __init__(self, nb_cards=4):
         self.nb_cards = nb_cards
+        self._init_players()
         self._init_game()
 
     def pop_card(self):
@@ -58,7 +58,7 @@ class Game:
         return self.deck.pop()
 
     def launch(self):
-        player, ai = self.players[0], self.players[1]
+        player, ai = self.player, self.ai_player
         player_turn = bool(random.randint(0, 1))
 
         while True:
@@ -70,6 +70,13 @@ class Game:
             player_turn = not player_turn
             self.thrown_deck += thrown_cards
 
+            if self._check_victory(player, ai):
+                break
+
+    def _init_players(self):
+        self.ai_player = AIPlayer(self)
+        self.player = Player(self)
+
     def _init_game(self):
         self.thrown_deck = []
         deck = []
@@ -80,25 +87,48 @@ class Game:
         random.shuffle(deck)
         self.deck = deck
 
-        players = []
-        for i in range(self.nb_players):
-            cards = []
+        cards = []
+        nb_players = 2
+        for _ in range(nb_players):
+            tmp = []
             for _ in range(self.nb_cards):
-                cards.append(self.pop_card())
-            if i == 0:
-                players.append(Player(cards.copy()))
-            if i == 1:
-                players.append(AIPlayer(cards.copy(), self))
-        self.players = players
+                tmp.append(self.pop_card())
+            cards.append(tmp.copy())
+        self.ai_player.set_cards(cards[0])
+        self.player.set_cards(cards[1])
+
+    def _check_victory(self, player, ai_player):
+        if len(player.cards) == 0:
+            player.win()
+            print('YOU WON')
+            return True
+        elif len(ai_player.cards) == 0:
+            ai_player.win()
+            print('THE AI WON')
+            return True
+        return False
+
 
 class PlayerI:
-    def __init__(self, cards):
+    def __init__(self, game):
+        self.game = game
+        self.victories = 0
+
+    def set_cards(self, cards):
         self.cards = cards
+
+    def win(self):
+        self.victories += 1
 
     def play(self, deck_card):
         pass
 
-    def substitute_card(self, answer, deck_card):
+    def _apply_card_effects(self, thrown_cards):
+        pass
+
+    def _substitute_card(self, answer, deck_card):
+        print('ans: '+str(answer))
+        print('len: '+str(len(self.cards)))
         selected = self.cards[answer]
         thrown_cards = [card for card in self.cards if card == selected]
         self.cards.pop(answer)
@@ -112,12 +142,25 @@ class PlayerI:
         # print(' '.join(['*' for _ in range(len(self.cards))]))
         print(' '.join([c.format for c in self.cards]))
 
+    def display_digit_error(self):
+        digit_valid = [*range(1, len(self.cards) + 1)]
+        print('Invalid command, valid commands: {}'.format(digit_valid))
+
+    def check_digit(self, answer):
+        if not answer.isdigit():
+            return False
+        answer = int(answer)
+        return answer <= len(self.cards) and answer >= 1
+
 class Player(PlayerI):
+    def __init__(self, game):
+        super().__init__(game)
+
     def play(self, deck_card):
         self.display_cards()
         print('New card => {}'.format(deck_card.format))
 
-        answer = str(input('Your turn: '))
+        answer = input('Your turn: ')
         if not self._check_answer(answer):
             self.play(deck_card)
         return self._handle_answer(answer, deck_card)
@@ -125,38 +168,60 @@ class Player(PlayerI):
     def _handle_answer(self, answer, deck_card):
         if answer.isdigit():
             answer = int(answer) - 1
-            return self.substitute_card(answer, deck_card)
+            thrown_cards = self._substitute_card(answer, deck_card)
+            self._apply_card_effects(thrown_cards)
+            return thrown_cards
         else:
             return []
 
     def _check_answer(self, answer):
-        def check_digit(answer):
-            if not answer.isdigit():
-                return False
-            answer = int(answer)
-            return answer <= len(self.cards) and answer >= 1
-
-        def check_command(answer):
-            if not isinstance(answer, str):
-                return False
-            command_exists = [c.name for c in Command if c.name == answer]
-            return len(command_exists) > 0
-
-        if not (check_digit(answer) or check_command(answer)):
-            print('Invalid command, valid commands: {}'.format(
-                [*range(1, len(self.cards) + 1), ' '.join(list(map(lambda x: x.name, Command)))] 
-            ))
+        if not (self.check_digit(answer) or self._check_command(answer)):
+            digit_valid = [*range(1, len(self.cards) + 1)]
+            command_valid = ' '.join(list(map(lambda x: x.name, Command)))
+            print('Invalid command, valid commands: {}'.format([*digit_valid, command_valid]))
             return False
         return True
 
+    def _check_command(self, answer):
+        if not isinstance(answer, str):
+            return False
+        command_exists = [c.name for c in Command if c.name == answer]
+        return len(command_exists) > 0
+
+    def _apply_card_effects(self, thrown_cards):
+        for card in thrown_cards:
+            if card.rank == Rank.JACK:
+                switch_msg = 'Which card do you wanna switch?'
+                peek_msg = 'Which card do you wanna peek?'
+                
+                self.display_cards()
+                my_card = input(switch_msg)
+                while not self.check_digit(my_card):
+                    self.display_digit_error()
+                    my_card = input(switch_msg)
+
+                self.game.ai_player.display_cards()
+                other_card = input(peek_msg)
+                while not self.game.ai_player.check_digit(other_card):
+                    self.game.ai_player.display_digit_error()
+                    other_card = input(switch_msg)
+
+                my_card, other_card = int(my_card) - 1, int(other_card) - 1
+                self.cards[my_card], self.game.ai_player.cards[other_card] = self.game.ai_player.cards[other_card], self.cards[my_card]
+
+    def _display_opponent_cards(self):
+        print(self.game.ai_player.cards)
+
 class AIPlayer(PlayerI):
-    def __init__(self, cards, game):
-        super().__init__(cards)
-        self.game = game
+    def __init__(self, game):
+        super().__init__(game)
 
     def play(self, deck_card):
+        # return []
+        return self._substitute_card(0, deck_card)
 
-        return self.substitute_card(1, deck_card)
+    def _apply_card_effects(self, thrown_cards):
+        pass
 
 
 g = Game()
