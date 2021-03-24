@@ -28,6 +28,12 @@ class Suit(Enum):
     HEART = 3
     SPADE = 4
 
+class Command(Enum):
+    N = 1
+
+    def __str__(self):
+        return str(self.value)
+
 class Card:
     def __init__(self, rank: Rank, suit: Suit):
         self.rank = rank
@@ -111,13 +117,37 @@ class Player(PlayerI):
         self.display_cards()
         print('New card => {}'.format(deck_card.format))
 
-        answer = int(input('Your turn: '))
-        if answer > len(self.cards) or answer < 0:
-            print('Insert a number between {} and {}'.format(0, len(self.cards)))
+        answer = str(input('Your turn: '))
+        if not self._check_answer(answer):
             self.play(deck_card)
-        answer -= 1
+        return self._handle_answer(answer, deck_card)
 
-        return self.substitute_card(answer, deck_card)
+    def _handle_answer(self, answer, deck_card):
+        if answer.isdigit():
+            answer = int(answer) - 1
+            return self.substitute_card(answer, deck_card)
+        else:
+            return []
+
+    def _check_answer(self, answer):
+        def check_digit(answer):
+            if not answer.isdigit():
+                return False
+            answer = int(answer)
+            return answer <= len(self.cards) and answer >= 1
+
+        def check_command(answer):
+            if not isinstance(answer, str):
+                return False
+            command_exists = [c.name for c in Command if c.name == answer]
+            return len(command_exists) > 0
+
+        if not (check_digit(answer) or check_command(answer)):
+            print('Invalid command, valid commands: {}'.format(
+                [*range(1, len(self.cards) + 1), ' '.join(list(map(lambda x: x.name, Command)))] 
+            ))
+            return False
+        return True
 
 class AIPlayer(PlayerI):
     def __init__(self, cards, game):
