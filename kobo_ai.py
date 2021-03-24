@@ -19,7 +19,6 @@ class Rank(Enum):
 
     def format(self):
         traductions = [str(i+1) for i in range(10)] + ['J', 'Q', 'K']
-        print(len(traductions))
         return traductions[self.value-1]
 
 class Suit(Enum):
@@ -29,7 +28,7 @@ class Suit(Enum):
     SPADE = 4
 
 class Command(Enum):
-    N = 1
+    Q = 1 # Q: Put a card back in the dec
 
     def __str__(self):
         return str(self.value)
@@ -126,9 +125,7 @@ class PlayerI:
     def _apply_card_effects(self, thrown_cards):
         pass
 
-    def _substitute_card(self, answer, deck_card):
-        print('ans: '+str(answer))
-        print('len: '+str(len(self.cards)))
+    def _substitute_card(self, answer: int, deck_card: Card):
         selected = self.cards[answer]
         thrown_cards = [card for card in self.cards if card == selected]
         self.cards.pop(answer)
@@ -138,9 +135,13 @@ class PlayerI:
         self.cards = [card for card in self.cards if card != selected]
         return thrown_cards
 
-    def display_cards(self):
-        # print(' '.join(['*' for _ in range(len(self.cards))]))
-        print(' '.join([c.format for c in self.cards]))
+    def _do_not_substitute_card(self, deck_card: Card):
+        thrown_cards = [card for card in self.cards if card == deck_card] + [deck_card]
+        return thrown_cards
+
+    def display_cards(self, visible_card: int=None):
+        print(' '.join([self.cards[i].format if i == visible_card else '*' for i in range(len(self.cards))]))
+        # print(' '.join([c.format for c in self.cards]))
 
     def display_digit_error(self):
         digit_valid = [*range(1, len(self.cards) + 1)]
@@ -151,6 +152,14 @@ class PlayerI:
             return False
         answer = int(answer)
         return answer <= len(self.cards) and answer >= 1
+
+    def input_digit_loop(self, msg) -> int:
+        self.display_cards()
+        digit = input(msg)
+        while not self.check_digit(digit):
+            self.display_digit_error()
+            digit = input(msg)
+        return int(digit) - 1
 
 class Player(PlayerI):
     def __init__(self, game):
@@ -172,7 +181,9 @@ class Player(PlayerI):
             self._apply_card_effects(thrown_cards)
             return thrown_cards
         else:
-            return []
+            thrown_cards = self._do_not_substitute_card(deck_card)
+            self._apply_card_effects(thrown_cards)
+            return thrown_cards
 
     def _check_answer(self, answer):
         if not (self.check_digit(answer) or self._check_command(answer)):
@@ -191,23 +202,16 @@ class Player(PlayerI):
     def _apply_card_effects(self, thrown_cards):
         for card in thrown_cards:
             if card.rank == Rank.JACK:
-                switch_msg = 'Which card do you wanna switch?'
-                peek_msg = 'Which card do you wanna peek?'
+                my_card = self.input_digit_loop('Which card do you wanna switch? ')
+                other_card = self.game.ai_player.input_digit_loop('Which card do you wanna peek? ')
                 
-                self.display_cards()
-                my_card = input(switch_msg)
-                while not self.check_digit(my_card):
-                    self.display_digit_error()
-                    my_card = input(switch_msg)
+                self.cards[my_card], self.game.ai_player.cards[other_card] = \
+                    self.game.ai_player.cards[other_card], self.cards[my_card]
 
-                self.game.ai_player.display_cards()
-                other_card = input(peek_msg)
-                while not self.game.ai_player.check_digit(other_card):
-                    self.game.ai_player.display_digit_error()
-                    other_card = input(switch_msg)
+            if card.rank == Rank.QUEEN:
+                hidden_card = self.input_digit_loop('Which card do you wanna see? ')
+                self.display_cards(visible_card=hidden_card)
 
-                my_card, other_card = int(my_card) - 1, int(other_card) - 1
-                self.cards[my_card], self.game.ai_player.cards[other_card] = self.game.ai_player.cards[other_card], self.cards[my_card]
 
     def _display_opponent_cards(self):
         print(self.game.ai_player.cards)
