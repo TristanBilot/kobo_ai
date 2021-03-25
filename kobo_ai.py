@@ -1,6 +1,9 @@
+import ui_utils as ui
 from enum import Enum
 from dataclasses import dataclass
+from typing import List
 import random
+
 
 class Rank(Enum):
     ACE = 1
@@ -50,10 +53,12 @@ class Game:
         self.nb_cards = nb_cards
         self._init_players()
         self._init_game()
+        self._displayed_cards = [0, 1]
+        self._should_display_cards = True
 
     def pop_card(self):
         if len(self.deck) == 0:
-            raise EnvironmentError('The deck is empty!')
+            print('The deck is empty!')
         return self.deck.pop()
 
     def launch(self):
@@ -63,7 +68,10 @@ class Game:
         while True:
             deck_card = self.pop_card()
             if player_turn:
+                if self._should_display_cards:
+                    player.display_cards(visible_cards=self._displayed_cards)
                 thrown_cards = player.play(deck_card)
+                self._displayed_cards = []
             else:
                 thrown_cards = ai.play(deck_card)
             player_turn = not player_turn
@@ -107,6 +115,11 @@ class Game:
             return True
         return False
 
+    def set_displayed_cards(self, cards: [int]):
+        self._displayed_cards = cards
+
+    def set_should_display_cards(self, should: bool):
+        self._should_display_cards = should
 
 class PlayerI:
     def __init__(self, game):
@@ -139,8 +152,10 @@ class PlayerI:
         thrown_cards = [card for card in self.cards if card == deck_card] + [deck_card]
         return thrown_cards
 
-    def display_cards(self, visible_card: int=None):
-        print(' '.join([self.cards[i].format if i == visible_card else '*' for i in range(len(self.cards))]))
+    def display_cards(self, visible_cards: List[int]=[]):
+        cards = ' '.join([self.cards[i].format if i in visible_cards else '_' for i in range(len(self.cards))])
+        styled = ui.wrap_str_in_stars(cards)
+        print(styled)
         # print(' '.join([c.format for c in self.cards]))
 
     def display_digit_error(self):
@@ -166,10 +181,7 @@ class Player(PlayerI):
         super().__init__(game)
 
     def play(self, deck_card):
-        self.display_cards()
-        print('New card => {}'.format(deck_card.format))
-
-        answer = input('Your turn: ')
+        answer = input('New card: {} => '.format(deck_card.format))
         if not self._check_answer(answer):
             self.play(deck_card)
         return self._handle_answer(answer, deck_card)
@@ -200,6 +212,7 @@ class Player(PlayerI):
         return len(command_exists) > 0
 
     def _apply_card_effects(self, thrown_cards):
+        self.game.set_should_display_cards(True)
         for card in thrown_cards:
             if card.rank == Rank.JACK:
                 my_card = self.input_digit_loop('Which card do you wanna switch? ')
@@ -210,8 +223,8 @@ class Player(PlayerI):
 
             if card.rank == Rank.QUEEN:
                 hidden_card = self.input_digit_loop('Which card do you wanna see? ')
-                self.display_cards(visible_card=hidden_card)
-
+                self.display_cards(visible_cards=[hidden_card])
+                self.game.set_should_display_cards(False)
 
     def _display_opponent_cards(self):
         print(self.game.ai_player.cards)
