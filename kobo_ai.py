@@ -4,7 +4,6 @@ from dataclasses import dataclass
 from typing import List
 import random
 
-
 class Rank(Enum):
     ACE = 1
     TWO = 2
@@ -30,23 +29,38 @@ class Suit(Enum):
     HEART = 3
     SPADE = 4
 
-class Command(Enum):
-    Q = 1 # Q: Put a card back in the dec
-
-    def __str__(self):
-        return str(self.value)
+class Colors:
+    HEADER = '\033[95m'
+    OKBLUE = '\033[94m'
+    OKCYAN = '\033[96m'
+    OKGREEN = '\033[92m'
+    WARNING = '\033[93m'
+    FAIL = '\033[91m'
+    ENDC = '\033[0m'
+    BOLD = '\033[1m'
+    UNDERLINE = '\033[4m'
 
 class Card:
     def __init__(self, rank: Rank, suit: Suit):
         self.rank = rank
         self.suit = suit
         self.format = '{}'.format(self.rank.format())
+        self._is_discovered = False
+
+    def discover(self, yes: bool):
+        self._is_discovered = yes
+
+    def is_discovered(self):
+        return self._is_discovered
 
     def __repr__(self):
-        return '{}\n'.format(self.format)
+        return '{}'.format(self.format)
 
     def __eq__(self, obj):
         return isinstance(obj, Card) and self.format == obj.format
+
+    def __hash__(self):
+        return hash((self.rank, self.suit))
 
 class Game:
     def __init__(self, nb_cards=4):
@@ -55,6 +69,7 @@ class Game:
         self._init_game()
         self._displayed_cards = [0, 1]
         self._should_display_cards = True
+        Game.QuitKey = 'Q'
 
     def pop_card(self):
         if len(self.deck) == 0:
@@ -73,7 +88,8 @@ class Game:
                 thrown_cards = player.play(deck_card)
                 self._displayed_cards = []
             else:
-                thrown_cards = ai.play(deck_card)
+                # thrown_cards = ai.play(deck_card)
+                thrown_cards = []
             player_turn = not player_turn
             self.thrown_deck += thrown_cards
 
@@ -128,6 +144,8 @@ class PlayerI:
 
     def set_cards(self, cards):
         self.cards = cards
+        for c in self.cards[:2]:
+            c.discover(True)
 
     def win(self):
         self.victories += 1
@@ -139,13 +157,23 @@ class PlayerI:
         pass
 
     def _substitute_card(self, answer: int, deck_card: Card):
+        old_cards = self.cards.copy()
         selected = self.cards[answer]
-        thrown_cards = [card for card in self.cards if card == selected]
-        self.cards.pop(answer)
+        deck_card.discover(True)
+        thrown_cards = [self.cards.pop(answer)]
         self.cards.insert(answer, deck_card)
 
         # remove all duplicates of the chosen card
-        self.cards = [card for card in self.cards if card != selected]
+        updated_cards = self.cards.copy()
+        for i in range(len(self.cards)):
+            c = self.cards[i]
+            if c.is_discovered() and c == selected:
+                thrown_cards.append(updated_cards.pop(i))
+        self.cards = updated_cards
+
+        print(old_cards)
+        print(updated_cards)
+        print(len(thrown_cards))
         return thrown_cards
 
     def _do_not_substitute_card(self, deck_card: Card):
@@ -153,35 +181,63 @@ class PlayerI:
         return thrown_cards
 
     def display_cards(self, visible_cards: List[int]=[]):
-        cards = ' '.join([self.cards[i].format if i in visible_cards else '_' for i in range(len(self.cards))])
+        cards = ' '.join([self.cards[i].format if i in visible_cards else self.cards[i].format for i in range(len(self.cards))])
         styled = ui.wrap_str_in_stars(cards)
         print(styled)
         # print(' '.join([c.format for c in self.cards]))
+
+    def _display_deck_card(self, card: Card):
+        print(Colors.OKCYAN)
+        print('New card')
+        styled = ui.wrap_str_in_stars(card.format)
+        print(styled + Colors.ENDC)
 
     def display_digit_error(self):
         digit_valid = [*range(1, len(self.cards) + 1)]
         print('Invalid command, valid commands: {}'.format(digit_valid))
 
-    def check_digit(self, answer):
+    def _check_answer(self, answer):
+        if not (self._check_digit(answer) or self._check_command(answer)):
+            digit_valid = [*range(1, len(self.cards) + 1)]
+            command_valid = answer == Game.QuitKey
+            print('Invalid command, valid commands: {}'.format([*digit_valid, command_valid]))
+            return False
+        return True
+
+    def _check_digit(self, answer):
         if not answer.isdigit():
             return False
         answer = int(answer)
         return answer <= len(self.cards) and answer >= 1
 
-    def input_digit_loop(self, msg) -> int:
+    
+    def _check_command(self, answer):
+        if not isinstance(answer, str):
+            return False
+        return answer == Game.QuitKey
+
+    def input_loop(self, msg) -> int:
+        """ loop asking the user to enter an answer: 
+        * digit=index of chosen card).
+        * Game.QuitKey=do not use the action.
+        returns -1 if Game.QuitKey or digit.
+        """
         self.display_cards()
-        digit = input(msg)
-        while not self.check_digit(digit):
+        answer = input(msg)
+        while not self._check_answer(answer):
             self.display_digit_error()
-            digit = input(msg)
-        return int(digit) - 1
+            answer = input(msg)
+        if answer == Game.QuitKey:
+            return -1
+        return int(answer) - 1
 
 class Player(PlayerI):
     def __init__(self, game):
         super().__init__(game)
 
     def play(self, deck_card):
-        answer = input('New card: {} => '.format(deck_card.format))
+        self._display_deck_card(deck_card)
+        answer = input('Your turn: ')
         if not self._check_answer(answer):
             self.play(deck_card)
         return self._handle_answer(answer, deck_card)
@@ -197,37 +253,34 @@ class Player(PlayerI):
             self._apply_card_effects(thrown_cards)
             return thrown_cards
 
-    def _check_answer(self, answer):
-        if not (self.check_digit(answer) or self._check_command(answer)):
-            digit_valid = [*range(1, len(self.cards) + 1)]
-            command_valid = ' '.join(list(map(lambda x: x.name, Command)))
-            print('Invalid command, valid commands: {}'.format([*digit_valid, command_valid]))
-            return False
-        return True
-
-    def _check_command(self, answer):
-        if not isinstance(answer, str):
-            return False
-        command_exists = [c.name for c in Command if c.name == answer]
-        return len(command_exists) > 0
-
     def _apply_card_effects(self, thrown_cards):
         self.game.set_should_display_cards(True)
         for card in thrown_cards:
             if card.rank == Rank.JACK:
-                my_card = self.input_digit_loop('Which card do you wanna switch? ')
-                other_card = self.game.ai_player.input_digit_loop('Which card do you wanna peek? ')
+                my_card = self.input_loop('Which card do you wanna switch? ')
+                if my_card == -1:
+                    break
+                other_card = self.game.ai_player.input_loop('Which card do you wanna peek? ')
                 
+                self.cards[my_card].discover(False)
+                self.game.ai_player.cards[other_card].discover(False)
                 self.cards[my_card], self.game.ai_player.cards[other_card] = \
                     self.game.ai_player.cards[other_card], self.cards[my_card]
 
             if card.rank == Rank.QUEEN:
-                hidden_card = self.input_digit_loop('Which card do you wanna see? ')
+                hidden_card = self.input_loop('Which card do you wanna see? ')
+                if hidden_card == -1:
+                    break
                 self.display_cards(visible_cards=[hidden_card])
                 self.game.set_should_display_cards(False)
 
     def _display_opponent_cards(self):
         print(self.game.ai_player.cards)
+
+    def display_cards(self, visible_cards: List[int]=[]):
+        print(Colors.BOLD)
+        print('Your cards')
+        super().display_cards(visible_cards=visible_cards)
 
 class AIPlayer(PlayerI):
     def __init__(self, game):
@@ -239,6 +292,11 @@ class AIPlayer(PlayerI):
 
     def _apply_card_effects(self, thrown_cards):
         pass
+
+    def display_cards(self, visible_cards: List[int]=[]):
+        print(Colors.BOLD)
+        print('AI cards')
+        super().display_cards(visible_cards=visible_cards)
 
 
 g = Game()
