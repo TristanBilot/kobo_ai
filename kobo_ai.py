@@ -156,6 +156,7 @@ class Game:
     def launch(self):
         player, ai = self.player, self.ai_player
         player_turn = bool(random.randint(0, 1))
+        thrown_cards: List[Card]
 
         while True:
             deck_card = self.pop_card()
@@ -165,11 +166,15 @@ class Game:
                 thrown_cards = player.play(deck_card)
                 self._displayed_cards = []
             else:
-                # thrown_cards = ai.play(deck_card)
-                thrown_cards = []
-            player_turn = not player_turn
+                ai.display_cards()
+                thrown_cards = ai.play(deck_card)
             self.thrown_deck += thrown_cards
+            print(('PLAYER' if player_turn else 'AI') + ' PLAYS ' + str(thrown_cards))
+            visible_cards = [c for c in ai.cards if c.is_discovered()]
+            if not player_turn:
+                print(f'Visible cards: {visible_cards}')
 
+            player_turn = not player_turn
             if self._check_victory(player, ai):
                 break
 
@@ -270,7 +275,6 @@ class PlayerI:
         # print(' '.join([c.format for c in self.cards]))
 
     def _display_deck_card(self, card: Card):
-        print(Colors.OKCYAN)
         print('New card')
         styled = ui.wrap_str_in_stars(card.format)
         print(styled + Colors.ENDC)
@@ -338,13 +342,14 @@ class Player(PlayerI):
                 self.display_cards(visible_cards=[hidden_card_index])
                 self.game.set_should_display_cards(False)
 
-    def _display_opponent_cards(self):
-        print(self.game.ai_player.cards)
-
     def display_cards(self, visible_cards: List[int]=[]):
         print(Colors.BOLD)
         print('Your cards')
         super().display_cards(visible_cards=visible_cards)
+
+    def _display_deck_card(self, card: Card):
+        print(Colors.OKCYAN)
+        super()._display_deck_card(card)
 
 class AIPlayer(PlayerI):
     def __init__(self, game):
@@ -355,11 +360,11 @@ class AIPlayer(PlayerI):
             """ returns the index of the card with the worst value.
             Does not take into account the duplicates.
             """
-            worst = cards[0], worst_idx = 0
+            worst, worst_idx = cards[0].rank.value, 0
             for i in range(1, len(cards)):
                 c = cards[i]
                 if c.rank.value > worst and c.rank != rank_to_ignore:
-                    worst = c.rank, worst_idx = i
+                    worst, worst_idx = c.rank.value, i
             return worst_idx
 
         def get_worst_combinaison_of_cards_index(cards: List[Card]) -> int:
@@ -400,7 +405,7 @@ class AIPlayer(PlayerI):
             """ returns the first index of a hidden card in `cards` or -1.
             """
             hidden_cards = [i for i in range(len(cards)) if not cards[i].is_discovered()]
-            return next(hidden_cards) if len(hidden_cards) == 1 else -1
+            return next(iter(hidden_cards)) if len(hidden_cards) > 0 else -1
 
         def apply_card_effects(thrown_cards: List[Card]):
             def apply_jack_effect(cards: List[Card]):
@@ -428,6 +433,7 @@ class AIPlayer(PlayerI):
             apply_queen_effect(thrown_cards)
             
 
+        self._display_deck_card(deck_card)
         player = self.game.player
         cards = [c for c in self.cards if c.is_discovered()]
         hidden_card_index = get_hidden_card_index(self.cards)
@@ -458,8 +464,11 @@ class AIPlayer(PlayerI):
                     apply_card_effects(thrown_queen_cards)
                     return thrown_queen_cards
 
+        print('sdofnsdonsqldnso')
         # handle hidden cards discover
         if hidden_card_index != -1: # found a hidden card
+            print('hidden index')
+            print(hidden_card_index)
             thrown_cards = self._substitute_card(hidden_card_index, deck_card)
             apply_card_effects(thrown_cards)
             return thrown_cards
@@ -471,8 +480,14 @@ class AIPlayer(PlayerI):
 
     def display_cards(self, visible_cards: List[int]=[]):
         print(Colors.BOLD)
+        print(Colors.FAIL)
         print('AI cards')
         super().display_cards(visible_cards=visible_cards)
+        print(Colors.ENDC)
+
+    def _display_deck_card(self, card: Card):
+        print(Colors.FAIL)
+        super()._display_deck_card(card)
 
 
 g = Game()
