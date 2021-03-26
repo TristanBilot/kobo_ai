@@ -6,7 +6,6 @@ import random
 import operator
 
 class Rank(Enum):
-    TEN = 0
     ACE = 1
     TWO = 2
     THREE = 3
@@ -16,9 +15,10 @@ class Rank(Enum):
     SEVEN = 7 
     EIGHT = 8
     NINE = 9
-    JACK = 10
-    QUEEN = 11
-    KING = 12
+    TEN = 10
+    JACK = 11
+    QUEEN = 12
+    KING = 13
 
     def format(self):
         traductions = [str(i+1) for i in range(10)] + ['J', 'Q', 'K']
@@ -84,7 +84,6 @@ class PlayerInput:
             or (accept_indexes and not accept_commands and not self._check_card_index(nb_cards)) \
             or (accept_commands and not accept_indexes and not self._check_command()):
             print(self._invalid_input_msg(nb_cards))
-            print(accept_commands and not accept_indexes and not self._check_command())
             self.value = self._input(msg)
         if self._check_kobo():
             self.is_kobo = True
@@ -93,13 +92,8 @@ class PlayerInput:
             self.is_index = True
         elif self._check_command():
             self.is_command = True
-        if self.is_command and self.value == CommandKeys.QuitKey:
+        if self.is_command and self.value == CommandKeys.QuitKey.value:
             self.is_quit_key = True
-
-        # print(self.is_index)
-        # print(self.is_command)
-        # print(self.is_kobo)
-        # print(self.is_quit_key)
 
     def _input(self, msg: str='') -> str:
         return input(msg)
@@ -122,7 +116,6 @@ class PlayerInput:
 
     def _check_command(self) -> bool:
         inp = self.value.split()
-        print(inp)
         if not 1 >= len(inp) <= 2:
             return False
         cmd = inp[0]
@@ -157,6 +150,7 @@ class Game:
     def pop_card(self):
         if len(self.deck) == 0:
             print('The deck is empty!')
+            exit()
         return self.deck.pop()
 
     def launch(self):
@@ -324,11 +318,10 @@ class Player(PlayerI):
             if card.rank == Rank.JACK:
                 self.display_cards()
                 inp = PlayerInput()
-                inp.input_loop(self.nb_cards, msg='Which card do you wanna switch? ', accept_indexes=True)
-                my_card = inp.value
+                inp.input_loop(self.nb_cards, msg='Which card do you wanna switch? ', accept_indexes=True, accept_commands=True)
                 if inp.is_quit_key:
                     break
-
+                my_card = inp.value
                 self.game.ai_player.display_cards()
                 inp = PlayerInput()
                 inp.input_loop(self.game.ai_player.nb_cards, msg='Which card do you wanna peek? ', accept_indexes=True)
@@ -337,10 +330,10 @@ class Player(PlayerI):
 
             if card.rank == Rank.QUEEN:
                 inp = PlayerInput()
-                inp.input_loop(self.game.ai_player.nb_cards, msg='Which card do you wanna see? ', accept_indexes=True)
-                hidden_card_index = inp.value
+                inp.input_loop(self.game.ai_player.nb_cards, msg='Which card do you wanna see? ', accept_indexes=True, accept_commands=True)
                 if inp.is_quit_key:
                     break
+                hidden_card_index = inp.value
                 super()._trigger_queen_effect(hidden_card_index)
                 self.display_cards(visible_cards=[hidden_card_index])
                 self.game.set_should_display_cards(False)
@@ -475,33 +468,6 @@ class AIPlayer(PlayerI):
         worst_card_index = get_worst_card_index(cards)
         thrown_cards = self._substitute_card(worst_card_index, deck_card)
         return thrown_cards
-
-    def _apply_card_effects(self, thrown_cards):
-        self.game.set_should_display_cards(True)
-        for card in thrown_cards:
-            if card.rank == Rank.JACK:
-                self.display_cards()
-                inp = PlayerInput()
-                inp.input_loop(self.nb_cards, msg='Which card do you wanna switch? ', accept_indexes=True)
-                my_card = inp.value
-                if inp.is_quit_key:
-                    break
-
-                self.game.ai_player.display_cards()
-                inp = PlayerInput()
-                inp.input_loop(self.game.ai_player.nb_cards, msg='Which card do you wanna peek? ', accept_indexes=True)
-                other_card = inp.value
-                super()._trigger_jack_effect(my_card, other_card, self.game.ai_player.cards)
-
-            if card.rank == Rank.QUEEN:
-                inp = PlayerInput()
-                inp.input_loop(self.game.ai_player.nb_cards, msg='Which card do you wanna see? ', accept_indexes=True)
-                hidden_card_index = inp.value
-                if inp.is_quit_key:
-                    break
-                super()._trigger_queen_effect(hidden_card_index)
-                self.display_cards(visible_cards=[hidden_card_index])
-                self.game.set_should_display_cards(False)
 
     def display_cards(self, visible_cards: List[int]=[]):
         print(Colors.BOLD)
